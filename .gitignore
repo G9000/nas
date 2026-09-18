@@ -1,0 +1,41 @@
+# ===================================================================
+# Personal NAS - Git Ignore Rules
+# ===================================================================
+
+# Binaries and executables (avoid committing large ~90MB binaries)
+bin/*.exe
+bin/*.zip
+*.exe
+
+# Database and runtime logs (contains user passwords, JWT sessions & logs)
+data/*
+!data/.gitkeep
+
+# Storage directory (keeps your personal files, photos & videos private)
+storage/**/*
+!storage/**/
+!storage/**/.gitkeep
+!storage/Welcome_to_your_NAS.txt
+
+# Windows OS artifacts
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# macOS artifacts
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor & IDE configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

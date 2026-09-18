@@ -1,0 +1,11 @@
+==================================================
+ Welcome to your Personal NAS (Local & Online)
+==================================================
+
+Any file or folder you put in this folder will be:
+1. Available immediately in your Web NAS (Google Drive UI)
+   - Local access: http://localhost:8080 or http://192.168.100.130:8080
+2. Accessible from any device on your Wi-Fi (Laptop, Desktop, Phone, Tablet)
+3. Available over the internet when Online Access is enabled
+
+Drop your files, videos, music, and documents here!
