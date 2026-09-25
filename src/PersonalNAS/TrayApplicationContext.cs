@@ -10,9 +10,9 @@ namespace PersonalNAS
         private const string LocalNasUrl = "http://localhost:8080";
 
         private readonly NasServer server;
-        private readonly Control uiDispatcher;
-        private readonly ContextMenuStrip contextMenu;
-        private readonly NotifyIcon trayIcon;
+        private Control uiDispatcher;
+        private ContextMenuStrip contextMenu;
+        private NotifyIcon trayIcon;
         private bool exiting;
         private bool shutdownComplete;
 
@@ -20,25 +20,51 @@ namespace PersonalNAS
         {
             server = new NasServer();
 
-            uiDispatcher = new Control();
-            if (uiDispatcher.Handle == IntPtr.Zero)
+            try
             {
-                throw new InvalidOperationException("The tray application's UI dispatcher could not be created.");
+                uiDispatcher = new Control();
+                if (uiDispatcher.Handle == IntPtr.Zero)
+                {
+                    throw new InvalidOperationException("The tray application's UI dispatcher could not be created.");
+                }
+
+                contextMenu = new ContextMenuStrip();
+                trayIcon = new NotifyIcon
+                {
+                    Icon = SystemIcons.Application,
+                    Text = "Personal NAS is stopped",
+                    ContextMenuStrip = contextMenu,
+                    Visible = true
+                };
+                trayIcon.DoubleClick += delegate { OpenNas(); };
+                server.StateChanged += OnServerStateChanged;
             }
-
-            contextMenu = new ContextMenuStrip();
-            trayIcon = new NotifyIcon
+            catch
             {
-                Icon = SystemIcons.Application,
-                Text = "Personal NAS is stopped",
-                ContextMenuStrip = contextMenu,
-                Visible = true
-            };
-            trayIcon.DoubleClick += delegate { OpenNas(); };
-            server.StateChanged += OnServerStateChanged;
+                server.StateChanged -= OnServerStateChanged;
+                try
+                {
+                    server.Dispose();
+                }
+                catch
+                {
+                    // Preserve the original construction failure.
+                }
 
+                DisposeTrayResources();
+                throw;
+            }
+        }
+
+        internal void StartInitially()
+        {
             RefreshTrayState();
             StartServer(true);
+        }
+
+        internal void CleanupAfterRun()
+        {
+            ShutdownResources();
         }
 
         protected override void ExitThreadCore()
@@ -49,21 +75,18 @@ namespace PersonalNAS
                 return;
             }
 
-            exiting = true;
             try
             {
-                server.Stop();
-                if (server.IsRunning)
-                {
-                    throw new InvalidOperationException("The server is still running.");
-                }
-
-                server.Dispose();
+                ShutdownResources();
             }
             catch (Exception ex)
             {
                 exiting = false;
-                RefreshTrayState();
+                if (trayIcon != null && !trayIcon.IsDisposed)
+                {
+                    RefreshTrayState();
+                }
+
                 MessageBox.Show(
                     "The NAS server could not be stopped, so Personal NAS will stay in the tray.\r\n\r\n" + ex.Message,
                     "Personal NAS",
@@ -80,6 +103,56 @@ namespace PersonalNAS
             shutdownComplete = true;
 
             base.ExitThreadCore();
+        }
+
+        private void ShutdownResources()
+        {
+            if (shutdownComplete)
+            {
+                return;
+            }
+
+            exiting = true;
+            server.Stop();
+            if (server.IsRunning)
+            {
+                throw new InvalidOperationException("The server is still running.");
+            }
+
+            server.Dispose();
+            server.StateChanged -= OnServerStateChanged;
+            DisposeTrayResources();
+            shutdownComplete = true;
+        }
+
+        private void DisposeTrayResources()
+        {
+            if (trayIcon != null)
+            {
+                try
+                {
+                    trayIcon.Visible = false;
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The icon may already have been disposed during partial construction.
+                }
+
+                trayIcon.Dispose();
+                trayIcon = null;
+            }
+
+            if (contextMenu != null)
+            {
+                contextMenu.Dispose();
+                contextMenu = null;
+            }
+
+            if (uiDispatcher != null)
+            {
+                uiDispatcher.Dispose();
+                uiDispatcher = null;
+            }
         }
 
         private void OnServerStateChanged(object sender, EventArgs e)

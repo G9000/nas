@@ -27,9 +27,12 @@ namespace PersonalNAS
                     return;
                 }
 
+                TrayApplicationContext applicationContext = null;
                 try
                 {
-                    Application.Run(new TrayApplicationContext());
+                    applicationContext = new TrayApplicationContext();
+                    applicationContext.StartInitially();
+                    Application.Run(applicationContext);
                 }
                 catch (Exception ex)
                 {
@@ -41,6 +44,22 @@ namespace PersonalNAS
                 }
                 finally
                 {
+                    if (applicationContext != null)
+                    {
+                        try
+                        {
+                            applicationContext.CleanupAfterRun();
+                        }
+                        catch (Exception cleanupException)
+                        {
+                            MessageBox.Show(
+                                "Personal NAS could not fully stop its server.\r\n\r\n" + cleanupException.Message,
+                                "Personal NAS",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+                        }
+                    }
+
                     instanceMutex.ReleaseMutex();
                 }
             }
