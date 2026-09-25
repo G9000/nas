@@ -6,6 +6,7 @@
 bin/*.exe
 bin/*.zip
 *.exe
+PersonalNAS-FileBrowser-LICENSE.txt
 
 # Database and runtime logs (contains user passwords, JWT sessions & logs)
 data/*
