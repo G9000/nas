@@ -23,7 +23,7 @@ The launcher operates on the `data` and `storage` directories beside its own exe
 
 - Add focused C# source for the tray launcher and a Windows build script that creates the single-file executable from the existing `bin/filebrowser.exe`.
 - Include the File Browser license notice with the distribution.
-- Place the generated launcher under `dist/` and update ignore rules so generated binaries remain untracked while the source and build script are tracked.
+- Place the generated `PersonalNAS.exe` at the project root, beside `data` and `storage`, so it uses the existing NAS files without path changes. The existing `*.exe` ignore rule keeps the generated executable untracked while source and build script remain tracked.
 - Update the README with the new double-click flow, tray controls, writable folder requirement, and the separate online/SMB actions.
 - Keep current batch and PowerShell launch/stop scripts available as fallback workflows.
 
