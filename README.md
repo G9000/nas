@@ -20,6 +20,8 @@ The bundled File Browser version is archived upstream and no longer receives sec
 | **Online Internet Access** | Double-click `Start_Online_Access.bat` (separate public tunnel flow). |
 | **Enable Windows Explorer (SMB)** | Double-click `Enable_Windows_File_Sharing.bat`. |
 
+If `PersonalNAS.exe` is not in the project folder yet, open PowerShell in the project folder and run `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-launcher.ps1` once. The build script downloads and verifies the pinned File Browser release if needed and creates the EXE. Building requires the Windows x64 .NET Framework C# compiler at `%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe`; if it is missing, install the .NET Framework 4.x developer tools.
+
 Keep the project folder writable. `PersonalNAS.exe` uses the adjacent `data\` folder for its database and logs and the adjacent `storage\` folder for your files. Keep both folders beside the EXE; they hold your existing NAS data and settings.
 
 ---
@@ -36,6 +38,10 @@ While the server is running, the tray menu provides:
 - **Exit** — stop the server started by this launcher and close the tray app.
 
 After stopping the server, choose **Start server** in the tray menu to start it again, or **Exit** to close the app.
+
+If **Copy LAN address** gives you `http://127.0.0.1:8080`, Windows did not report a usable LAN address. Check that Wi-Fi or Ethernet is connected and active; `127.0.0.1` only works on this computer.
+
+The legacy `Stop_NAS.bat` / `scripts\stop-nas.ps1` fallback stops every process named `filebrowser` and `cloudflared`, including processes started separately. The tray app's **Stop server** and **Exit** only stop the server instance started by that tray app.
 
 ### Default Login Credentials
 
@@ -64,17 +70,20 @@ To access the storage folder as a network location in Windows Explorer:
 
 The SMB setup shares the adjacent `storage\` folder. SMB access is separate from the web server and the online tunnel.
 
+The SMB setup grants `Everyone` full control of the share and storage files. Use it only on a trusted private network: anyone who can reach the share may change or delete its files.
+
 ---
 
 ## ☁️ 3. Online Access (Cloudflare Tunnel)
 
 This is a separate workflow from the tray launcher and exposes the web interface through a public URL:
 
-1. Start the NAS server, then double-click `Start_Online_Access.bat`.
-2. Open the generated `https://…trycloudflare.com` address on your remote device.
-3. Press **Enter** in the tunnel window when you want to stop online access.
+1. Start the NAS locally and change the initial admin password in the web interface before making the server public.
+2. Double-click `Start_Online_Access.bat` to start the tunnel.
+3. Open the generated `https://…trycloudflare.com` address on your remote device.
+4. Press **Enter** in the tunnel window when you want to stop online access.
 
-The tunnel uses HTTPS for the connection, but the bundled File Browser release is archived and no longer receives security fixes. Do not use this public tunnel for sensitive files.
+The browser's public HTTPS connection terminates at Cloudflare, which forwards traffic to this PC through its encrypted tunnel. The bundled File Browser release is archived and no longer receives security fixes. Do not use this public tunnel for sensitive files.
 
 ---
 
@@ -98,3 +107,5 @@ To synchronize the NAS storage folder with your Google Drive account:
   .\scripts\setup-gdrive-sync.ps1
   ```
 - Follow the instructions to link `rclone` to your Google Drive account.
+
+The setup guide prints `rclone sync` examples. `sync` mirrors deletions too, so preview the changes and keep a backup before running them. Use `rclone copy` instead if you do not want the destination to delete files.

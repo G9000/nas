@@ -82,7 +82,7 @@ namespace PersonalNAS
             catch (Exception ex)
             {
                 exiting = false;
-                if (trayIcon != null && !trayIcon.IsDisposed)
+                if (trayIcon != null)
                 {
                     RefreshTrayState();
                 }

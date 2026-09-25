@@ -87,15 +87,14 @@ if ($tunnelUrl) {
     Write-Host " [HOW TO USE]" -ForegroundColor Yellow
     Write-Host "   - Open this link from ANY phone, laptop, or computer anywhere" -ForegroundColor White
     Write-Host "     in the world (even on 4G/5G or coffee shop Wi-Fi)!" -ForegroundColor White
-    Write-Host "   - Sign in with:" -ForegroundColor White
-    Write-Host "       Username: admin" -ForegroundColor White
-    Write-Host "       Password: NasAdmin2026!" -ForegroundColor White
+    Write-Host "   - Sign in with the username and password configured in the NAS web interface." -ForegroundColor White
     Write-Host ""
     Write-Host " [SECURITY]" -ForegroundColor Yellow
-    Write-Host "   - Traffic is fully end-to-end HTTPS encrypted." -ForegroundColor DarkGray
+    Write-Host "   - Browser traffic uses HTTPS to Cloudflare; Cloudflare terminates that connection." -ForegroundColor DarkGray
+    Write-Host "   - This PC connects to Cloudflare through an encrypted tunnel." -ForegroundColor DarkGray
     Write-Host "   - No router port-forwarding required." -ForegroundColor DarkGray
     Write-Host ""
-    Write-Host " Press [ENTER] or close this window when you want to stop online access." -ForegroundColor Yellow
+    Write-Host " Press [ENTER] to stop online access. After the tunnel stops, press any key to close this window." -ForegroundColor Yellow
     Write-Host "===============================================================" -ForegroundColor Green
     
     # Wait for user input to stop
