@@ -288,23 +288,80 @@ namespace PersonalNAS
                 return;
             }
 
-            RunInitializationCommand(executablePath, "database initialization", new string[]
-            {
-                "config", "init",
-                "-d", databasePath,
-                "-a", "0.0.0.0",
-                "-p", "8080",
-                "-r", storageDirectory,
-                "--branding.name", "My Personal NAS",
-                "--minimumPasswordLength", "4"
-            });
+            string stagingDatabasePath = Path.Combine(dataDirectory, ".personalnas-bootstrap.db");
+            CleanupStagingDatabase(stagingDatabasePath);
 
-            RunInitializationCommand(executablePath, "initial administrator creation", new string[]
+            try
             {
-                "users", "add", "admin", "NasAdmin2026!",
-                "-d", databasePath,
-                "--perm.admin"
-            });
+                RunInitializationCommand(executablePath, "database initialization", new string[]
+                {
+                    "config", "init",
+                    "-d", stagingDatabasePath,
+                    "-a", "0.0.0.0",
+                    "-p", "8080",
+                    "-r", storageDirectory,
+                    "--branding.name", "My Personal NAS",
+                    "--minimumPasswordLength", "4"
+                });
+
+                RunInitializationCommand(executablePath, "initial administrator creation", new string[]
+                {
+                    "users", "add", "admin", "NasAdmin2026!",
+                    "-d", stagingDatabasePath,
+                    "--perm.admin"
+                });
+
+                try
+                {
+                    File.Move(stagingDatabasePath, databasePath);
+                }
+                catch (IOException)
+                {
+                    if (!File.Exists(databasePath))
+                    {
+                        throw;
+                    }
+
+                    // A database created concurrently is user data; leave it untouched.
+                }
+            }
+            catch (Exception bootstrapError)
+            {
+                try
+                {
+                    CleanupStagingDatabase(stagingDatabasePath);
+                }
+                catch (Exception cleanupError)
+                {
+                    throw new InvalidOperationException(
+                        bootstrapError.Message + Environment.NewLine +
+                        "The incomplete staging database could not be removed: " + stagingDatabasePath + Environment.NewLine +
+                        cleanupError.Message,
+                        bootstrapError);
+                }
+
+                throw;
+            }
+
+            CleanupStagingDatabase(stagingDatabasePath);
+        }
+
+        private static void CleanupStagingDatabase(string stagingDatabasePath)
+        {
+            string[] stagingFiles = new string[]
+            {
+                stagingDatabasePath,
+                stagingDatabasePath + "-wal",
+                stagingDatabasePath + "-shm"
+            };
+
+            for (int index = 0; index < stagingFiles.Length; index++)
+            {
+                if (File.Exists(stagingFiles[index]))
+                {
+                    File.Delete(stagingFiles[index]);
+                }
+            }
         }
 
         private void RunInitializationCommand(string executablePath, string operation, string[] arguments)
