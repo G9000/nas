@@ -95,13 +95,6 @@ namespace PersonalNAS
                 return;
             }
 
-            server.StateChanged -= OnServerStateChanged;
-            trayIcon.Visible = false;
-            trayIcon.Dispose();
-            contextMenu.Dispose();
-            uiDispatcher.Dispose();
-            shutdownComplete = true;
-
             base.ExitThreadCore();
         }
 
