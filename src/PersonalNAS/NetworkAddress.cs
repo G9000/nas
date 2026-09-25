@@ -106,7 +106,9 @@ namespace PersonalNAS
                 }
             }
 
-            return fallbackAddress ?? FallbackAddress;
+            return fallbackAddress != null && fallbackClass > 1
+                ? fallbackAddress
+                : FallbackAddress;
         }
 
         private static uint GetBestRoutedInterfaceIndex()
