@@ -16,6 +16,8 @@ namespace PersonalNAS
         private const int StopTimeoutMilliseconds = 5000;
         private const int CommandTimeoutMilliseconds = 30000;
         private const string RuntimeVersion = "2.63.23";
+        private const string BootstrapOwnerMarker = "PersonalNAS database bootstrap staging v1";
+        private const string BootstrapOwnerSuffix = ".owner";
 
         private readonly object syncRoot = new object();
         private readonly string launcherDirectory;
@@ -288,8 +290,8 @@ namespace PersonalNAS
                 return;
             }
 
-            string stagingDatabasePath = Path.Combine(dataDirectory, ".personalnas-bootstrap.db");
-            CleanupStagingDatabase(stagingDatabasePath);
+            string ownerMarkerPath;
+            string stagingDatabasePath = CreateStagingDatabasePath(out ownerMarkerPath);
 
             try
             {
@@ -329,7 +331,7 @@ namespace PersonalNAS
             {
                 try
                 {
-                    CleanupStagingDatabase(stagingDatabasePath);
+                    CleanupOwnedBootstrapFiles(stagingDatabasePath, ownerMarkerPath);
                 }
                 catch (Exception cleanupError)
                 {
@@ -343,11 +345,81 @@ namespace PersonalNAS
                 throw;
             }
 
-            CleanupStagingDatabase(stagingDatabasePath);
+            CleanupOwnedBootstrapFiles(stagingDatabasePath, ownerMarkerPath);
         }
 
-        private static void CleanupStagingDatabase(string stagingDatabasePath)
+        private string CreateStagingDatabasePath(out string ownerMarkerPath)
         {
+            for (int attempt = 0; attempt < 10; attempt++)
+            {
+                string stagingStem = Path.Combine(dataDirectory, ".personalnas-bootstrap-" + Guid.NewGuid().ToString("N"));
+                string stagingDatabasePath = stagingStem + ".db";
+                string markerPath = stagingStem + BootstrapOwnerSuffix;
+
+                if (IsPathOccupied(stagingDatabasePath) ||
+                    IsPathOccupied(stagingDatabasePath + "-wal") ||
+                    IsPathOccupied(stagingDatabasePath + "-shm") ||
+                    IsPathOccupied(markerPath))
+                {
+                    continue;
+                }
+
+                bool markerCreated = false;
+                try
+                {
+                    byte[] markerContents = Encoding.UTF8.GetBytes(BootstrapOwnerMarker);
+                    using (FileStream marker = new FileStream(markerPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    {
+                        markerCreated = true;
+                        marker.Write(markerContents, 0, markerContents.Length);
+                    }
+                }
+                catch (IOException ex)
+                {
+                    if (markerCreated)
+                    {
+                        File.Delete(markerPath);
+                    }
+
+                    if (IsPathOccupied(markerPath))
+                    {
+                        continue;
+                    }
+
+                    throw new InvalidOperationException("A staging owner marker could not be created in: " + dataDirectory + Environment.NewLine + ex.Message, ex);
+                }
+                catch (Exception ex)
+                {
+                    if (markerCreated && File.Exists(markerPath))
+                    {
+                        File.Delete(markerPath);
+                    }
+
+                    throw new InvalidOperationException("A staging owner marker could not be created in: " + dataDirectory + Environment.NewLine + ex.Message, ex);
+                }
+
+                if (IsPathOccupied(stagingDatabasePath) ||
+                    IsPathOccupied(stagingDatabasePath + "-wal") ||
+                    IsPathOccupied(stagingDatabasePath + "-shm"))
+                {
+                    File.Delete(markerPath);
+                    continue;
+                }
+
+                ownerMarkerPath = markerPath;
+                return stagingDatabasePath;
+            }
+
+            throw new InvalidOperationException("A unique staging database path could not be reserved in: " + dataDirectory);
+        }
+
+        private static void CleanupOwnedBootstrapFiles(string stagingDatabasePath, string ownerMarkerPath)
+        {
+            if (!HasValidOwnerMarker(ownerMarkerPath))
+            {
+                throw new InvalidOperationException("The staging owner marker is missing or does not match this application: " + ownerMarkerPath);
+            }
+
             string[] stagingFiles = new string[]
             {
                 stagingDatabasePath,
@@ -362,6 +434,19 @@ namespace PersonalNAS
                     File.Delete(stagingFiles[index]);
                 }
             }
+
+            File.Delete(ownerMarkerPath);
+        }
+
+        private static bool HasValidOwnerMarker(string ownerMarkerPath)
+        {
+            return File.Exists(ownerMarkerPath) &&
+                String.Equals(File.ReadAllText(ownerMarkerPath, Encoding.UTF8), BootstrapOwnerMarker, StringComparison.Ordinal);
+        }
+
+        private static bool IsPathOccupied(string path)
+        {
+            return File.Exists(path) || Directory.Exists(path);
         }
 
         private void RunInitializationCommand(string executablePath, string operation, string[] arguments)
