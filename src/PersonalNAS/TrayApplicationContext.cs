@@ -269,11 +269,12 @@ namespace PersonalNAS
 
                 try
                 {
-                    Clipboard.SetText(NetworkAddress.GetLanUrl());
+                    string lanUrl = NetworkAddress.GetLanUrl();
+                    Clipboard.SetText(lanUrl);
                     trayIcon.ShowBalloonTip(
                         2000,
                         "Personal NAS",
-                        "LAN address copied to the clipboard.",
+                        lanUrl + " copied to the clipboard.",
                         ToolTipIcon.Info);
                 }
                 catch (Exception ex)
