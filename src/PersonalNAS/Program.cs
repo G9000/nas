@@ -31,6 +31,14 @@ namespace PersonalNAS
                 {
                     Application.Run(new TrayApplicationContext());
                 }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        "Personal NAS could not start.\r\n\r\n" + ex.Message,
+                        "Personal NAS",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
                 finally
                 {
                     instanceMutex.ReleaseMutex();
