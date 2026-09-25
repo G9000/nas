@@ -13,8 +13,8 @@ The launcher operates on the `data` and `storage` directories beside its own exe
 ## Startup and tray behavior
 
 - On double-click, initialize the existing File Browser database and default admin account if no database exists, then start the server quietly on the existing port `8080` and open `http://localhost:8080` in the default browser.
-- Show a tray icon with a status tooltip and menu actions: **Open NAS**, **Copy LAN address**, **Stop server**, and **Exit**.
-- Stopping ends only the server process started by this launcher. Exiting stops that process and removes the tray icon.
+- Show a tray icon with a status tooltip and menu actions: **Open NAS**, **Copy LAN address**, **Stop server**, and **Exit** while running. After stopping, show **Start server** and **Exit**.
+- Stopping ends only the server process started by this launcher; the tray app remains open and can start it again. Exiting stops the server if needed and removes the tray icon.
 - Prevent a second launcher instance from starting another server; show a short message directing the user to the existing tray controls.
 - Report startup failures in a readable dialog. In particular, explain if port `8080` is already occupied or if the adjacent data/storage directories cannot be written.
 - Keep online tunnel and SMB configuration as separate existing workflows; this launcher starts only the local/LAN web server.
@@ -31,7 +31,7 @@ The launcher operates on the `data` and `storage` directories beside its own exe
 
 - The produced EXE starts the bundled server without showing a command window and opens the local web UI.
 - Existing `data` and `storage` content is used without moving or overwriting user files.
-- Tray actions open the web UI, copy the current LAN URL, stop only the server owned by the launcher, and exit cleanly.
+- Tray actions open the web UI, copy the current LAN URL, stop and restart only the server owned by the launcher, and exit cleanly.
 - A failed or conflicting startup produces a useful message and does not kill unrelated File Browser processes.
 - The legacy scripts and separate tunnel workflow remain available.
 
@@ -41,4 +41,3 @@ The launcher operates on the `data` and `storage` directories beside its own exe
 - Existing File Browser credentials and database behavior are preserved. Credential redesign is outside this launcher's scope.
 - Because the storage and database remain beside the EXE, users should run it from a writable folder rather than a protected installation directory.
 - LAN access still depends on the Windows firewall being configured as in the current setup.
-
