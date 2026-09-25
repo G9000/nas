@@ -32,6 +32,7 @@ $RECYCLE.BIN/
 .LSOverride
 
 # Editor & IDE configs
+.worktrees/
 .vscode/
 .idea/
 *.suo
