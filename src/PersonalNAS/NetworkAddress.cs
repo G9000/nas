@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -9,6 +10,16 @@ namespace PersonalNAS
     {
         private const string FallbackAddress = "127.0.0.1";
         private const string RouteProbeAddress = "8.8.8.8";
+        private static readonly string[] VirtualAdapterMarkers = new string[]
+        {
+            "virtual", "hyper-v", "vethernet", "docker", "wsl", "vmware", "virtualbox",
+            "tap-windows", "wintun", "wireguard", "vpn", "tailscale", "zerotier",
+            "openvpn", "globalprotect", "anyconnect", "fortinet", "checkpoint", "npcap"
+        };
+        private static readonly string[] OtherAdapterMarkers = new string[]
+        {
+            "bluetooth"
+        };
 
         [DllImport("iphlpapi.dll", ExactSpelling = true)]
         private static extern uint GetBestInterface(uint destinationAddress, out uint interfaceIndex);
@@ -22,7 +33,9 @@ namespace PersonalNAS
         {
             uint bestInterfaceIndex = GetBestRoutedInterfaceIndex();
             string fallbackAddress = null;
-            int fallbackRank = int.MinValue;
+            int fallbackClass = int.MinValue;
+            bool fallbackHasGateway = false;
+            int fallbackMediaRank = int.MinValue;
             long fallbackSpeed = long.MinValue;
             NetworkInterface[] interfaces;
 
@@ -39,7 +52,8 @@ namespace PersonalNAS
             {
                 try
                 {
-                    if (!IsEligiblePhysicalInterface(networkInterface))
+                    if (networkInterface.OperationalStatus != OperationalStatus.Up ||
+                        networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback)
                     {
                         continue;
                     }
@@ -57,21 +71,32 @@ namespace PersonalNAS
                         continue;
                     }
 
-                    if (bestInterfaceIndex != 0 && unchecked((uint)ipv4Properties.Index) == bestInterfaceIndex)
+                    if (bestInterfaceIndex != 0 &&
+                        unchecked((uint)ipv4Properties.Index) == bestInterfaceIndex &&
+                        IsLikelyPhysicalInterface(networkInterface))
                     {
                         return address;
                     }
 
-                    // If the route lookup is unavailable or selects an ineligible
-                    // adapter, prefer a physical adapter with a gateway, then Ethernet,
-                    // then link speed.
-                    int rank = HasIpv4DefaultGateway(properties) ? 100 : 0;
-                    rank += networkInterface.NetworkInterfaceType == NetworkInterfaceType.Ethernet ? 20 : 10;
+                    int candidateClass = GetInterfaceClass(networkInterface);
+                    bool hasGateway = HasIpv4DefaultGateway(properties);
+                    int mediaRank = GetMediaRank(networkInterface);
                     long speed = networkInterface.Speed;
-                    if (fallbackAddress == null || rank > fallbackRank || (rank == fallbackRank && speed > fallbackSpeed))
+                    if (IsBetterCandidate(
+                        candidateClass,
+                        hasGateway,
+                        mediaRank,
+                        speed,
+                        fallbackAddress != null,
+                        fallbackClass,
+                        fallbackHasGateway,
+                        fallbackMediaRank,
+                        fallbackSpeed))
                     {
                         fallbackAddress = address;
-                        fallbackRank = rank;
+                        fallbackClass = candidateClass;
+                        fallbackHasGateway = hasGateway;
+                        fallbackMediaRank = mediaRank;
                         fallbackSpeed = speed;
                     }
                 }
@@ -105,13 +130,98 @@ namespace PersonalNAS
             }
         }
 
-        private static bool IsEligiblePhysicalInterface(NetworkInterface networkInterface)
+        private static bool IsLikelyPhysicalInterface(NetworkInterface networkInterface)
         {
             NetworkInterfaceType type = networkInterface.NetworkInterfaceType;
             return networkInterface.OperationalStatus == OperationalStatus.Up &&
                 type != NetworkInterfaceType.Loopback &&
                 type != NetworkInterfaceType.Tunnel &&
-                (type == NetworkInterfaceType.Ethernet || type == NetworkInterfaceType.Wireless80211);
+                (type == NetworkInterfaceType.Ethernet || type == NetworkInterfaceType.Wireless80211) &&
+                !HasVirtualAdapterMarker(networkInterface) &&
+                !HasOtherAdapterMarker(networkInterface);
+        }
+
+        private static int GetInterfaceClass(NetworkInterface networkInterface)
+        {
+            if (HasVirtualAdapterMarker(networkInterface) ||
+                networkInterface.NetworkInterfaceType == NetworkInterfaceType.Tunnel)
+            {
+                return 1;
+            }
+
+            if (networkInterface.NetworkInterfaceType == NetworkInterfaceType.Ethernet ||
+                networkInterface.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
+            {
+                return HasOtherAdapterMarker(networkInterface) ? 2 : 3;
+            }
+
+            return 2;
+        }
+
+        private static int GetMediaRank(NetworkInterface networkInterface)
+        {
+            if (networkInterface.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+            {
+                return 2;
+            }
+
+            return networkInterface.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? 1 : 0;
+        }
+
+        private static bool HasVirtualAdapterMarker(NetworkInterface networkInterface)
+        {
+            return HasAdapterMarker(networkInterface, VirtualAdapterMarkers);
+        }
+
+        private static bool HasOtherAdapterMarker(NetworkInterface networkInterface)
+        {
+            return HasAdapterMarker(networkInterface, OtherAdapterMarkers);
+        }
+
+        private static bool HasAdapterMarker(NetworkInterface networkInterface, string[] markers)
+        {
+            string name = networkInterface.Name ?? String.Empty;
+            string description = networkInterface.Description ?? String.Empty;
+
+            foreach (string marker in markers)
+            {
+                if (name.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    description.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsBetterCandidate(
+            int candidateClass,
+            bool candidateHasGateway,
+            int candidateMediaRank,
+            long candidateSpeed,
+            bool hasCurrentCandidate,
+            int currentClass,
+            bool currentHasGateway,
+            int currentMediaRank,
+            long currentSpeed)
+        {
+            if (!hasCurrentCandidate || candidateClass != currentClass)
+            {
+                return !hasCurrentCandidate || candidateClass > currentClass;
+            }
+
+            if (candidateHasGateway != currentHasGateway)
+            {
+                return candidateHasGateway;
+            }
+
+            if (candidateMediaRank != currentMediaRank)
+            {
+                return candidateMediaRank > currentMediaRank;
+            }
+
+            return candidateSpeed > currentSpeed;
         }
 
         private static string GetFirstUsableAddress(IPInterfaceProperties properties)
