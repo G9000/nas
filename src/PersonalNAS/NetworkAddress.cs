@@ -1,12 +1,17 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
 
 namespace PersonalNAS
 {
     internal static class NetworkAddress
     {
         private const string FallbackAddress = "127.0.0.1";
+        private const string RouteProbeAddress = "8.8.8.8";
+
+        [DllImport("iphlpapi.dll", ExactSpelling = true)]
+        private static extern uint GetBestInterface(uint destinationAddress, out uint interfaceIndex);
 
         internal static string GetLanUrl()
         {
@@ -15,7 +20,10 @@ namespace PersonalNAS
 
         private static string GetLanAddress()
         {
-            string firstUsableAddress = null;
+            uint bestInterfaceIndex = GetBestRoutedInterfaceIndex();
+            string fallbackAddress = null;
+            int fallbackRank = int.MinValue;
+            long fallbackSpeed = long.MinValue;
             NetworkInterface[] interfaces;
 
             try
@@ -31,30 +39,40 @@ namespace PersonalNAS
             {
                 try
                 {
-                    if (networkInterface.OperationalStatus != OperationalStatus.Up ||
-                        networkInterface.NetworkInterfaceType == NetworkInterfaceType.Loopback)
+                    if (!IsEligiblePhysicalInterface(networkInterface))
                     {
                         continue;
                     }
 
-                    bool hasDefaultGateway = HasIpv4DefaultGateway(networkInterface);
-                    foreach (UnicastIPAddressInformation addressInfo in networkInterface.GetIPProperties().UnicastAddresses)
+                    IPInterfaceProperties properties = networkInterface.GetIPProperties();
+                    IPv4InterfaceProperties ipv4Properties = properties.GetIPv4Properties();
+                    if (ipv4Properties == null)
                     {
-                        IPAddress address = addressInfo.Address;
-                        if (!IsUsableLanAddress(address))
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
 
-                        if (hasDefaultGateway)
-                        {
-                            return address.ToString();
-                        }
+                    string address = GetFirstUsableAddress(properties);
+                    if (address == null)
+                    {
+                        continue;
+                    }
 
-                        if (firstUsableAddress == null)
-                        {
-                            firstUsableAddress = address.ToString();
-                        }
+                    if (bestInterfaceIndex != 0 && unchecked((uint)ipv4Properties.Index) == bestInterfaceIndex)
+                    {
+                        return address;
+                    }
+
+                    // If the route lookup is unavailable or selects an ineligible
+                    // adapter, prefer a physical adapter with a gateway, then Ethernet,
+                    // then link speed.
+                    int rank = HasIpv4DefaultGateway(properties) ? 100 : 0;
+                    rank += networkInterface.NetworkInterfaceType == NetworkInterfaceType.Ethernet ? 20 : 10;
+                    long speed = networkInterface.Speed;
+                    if (fallbackAddress == null || rank > fallbackRank || (rank == fallbackRank && speed > fallbackSpeed))
+                    {
+                        fallbackAddress = address;
+                        fallbackRank = rank;
+                        fallbackSpeed = speed;
                     }
                 }
                 catch (NetworkInformationException)
@@ -63,12 +81,55 @@ namespace PersonalNAS
                 }
             }
 
-            return firstUsableAddress ?? FallbackAddress;
+            return fallbackAddress ?? FallbackAddress;
         }
 
-        private static bool HasIpv4DefaultGateway(NetworkInterface networkInterface)
+        private static uint GetBestRoutedInterfaceIndex()
         {
-            foreach (GatewayIPAddressInformation gatewayInfo in networkInterface.GetIPProperties().GatewayAddresses)
+            byte[] destinationBytes = IPAddress.Parse(RouteProbeAddress).GetAddressBytes();
+            uint interfaceIndex;
+
+            try
+            {
+                return GetBestInterface(BitConverter.ToUInt32(destinationBytes, 0), out interfaceIndex) == 0
+                    ? interfaceIndex
+                    : 0;
+            }
+            catch (DllNotFoundException)
+            {
+                return 0;
+            }
+            catch (EntryPointNotFoundException)
+            {
+                return 0;
+            }
+        }
+
+        private static bool IsEligiblePhysicalInterface(NetworkInterface networkInterface)
+        {
+            NetworkInterfaceType type = networkInterface.NetworkInterfaceType;
+            return networkInterface.OperationalStatus == OperationalStatus.Up &&
+                type != NetworkInterfaceType.Loopback &&
+                type != NetworkInterfaceType.Tunnel &&
+                (type == NetworkInterfaceType.Ethernet || type == NetworkInterfaceType.Wireless80211);
+        }
+
+        private static string GetFirstUsableAddress(IPInterfaceProperties properties)
+        {
+            foreach (UnicastIPAddressInformation addressInfo in properties.UnicastAddresses)
+            {
+                if (IsUsableLanAddress(addressInfo.Address))
+                {
+                    return addressInfo.Address.ToString();
+                }
+            }
+
+            return null;
+        }
+
+        private static bool HasIpv4DefaultGateway(IPInterfaceProperties properties)
+        {
+            foreach (GatewayIPAddressInformation gatewayInfo in properties.GatewayAddresses)
             {
                 IPAddress gateway = gatewayInfo.Address;
                 if (gateway.AddressFamily == AddressFamily.InterNetwork &&
@@ -90,15 +151,7 @@ namespace PersonalNAS
             }
 
             byte[] bytes = address.GetAddressBytes();
-
-            // Exclude APIPA and common Docker/virtual-network subnets, matching the
-            // legacy PowerShell launcher so the copied URL points to a reachable adapter.
             if (bytes[0] == 169 && bytes[1] == 254)
-            {
-                return false;
-            }
-
-            if (bytes[0] == 172 && (bytes[1] == 17 || bytes[1] == 20))
             {
                 return false;
             }
